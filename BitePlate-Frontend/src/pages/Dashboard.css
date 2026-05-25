@@ -1,0 +1,44 @@
+.dashboard {
+    padding: 2rem;
+}
+
+.stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin: 2rem 0;
+}
+
+.stat-card {
+    padding: 2rem;
+    border-radius: 0.5rem;
+    color: white;
+    text-align: center;
+}
+
+.stat-card h3 {
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.stat-card.available {
+    background: linear-gradient(135deg, #4CAF50, #45a049);
+}
+
+.stat-card.occupied {
+    background: linear-gradient(135deg, #FF9800, #e68900);
+}
+
+.stat-card.reserved {
+    background: linear-gradient(135deg, #2196F3, #0b7dda);
+}
+
+.stat-card.awaiting {
+    background: linear-gradient(135deg, #FF5722, #e64a19);
+}
+
+.tables-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 1rem;
+}
