@@ -1,25 +1,35 @@
 import { useEffect, useState } from 'react';
-import { menuAPI, ordersAPI } from '../services/api';
+import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
-import MenuItemCard from '../components/MenuItemCard';
-import OrderSummary from '../components/OrderSummary';
-import './MenuPage.css';
+import { menuAPI } from '../services/api';
+import Navbar from '../components/common/Navbar';
+import MenuList from '../components/menu/MenuList';
+import OrderSummary from '../components/order/OrderSummary';
+import Loading from '../components/common/Loading';
+import { ChefHat } from 'lucide-react';
 
 export default function MenuPage() {
-    const [items, setItems] = useState([]);
-    const [selectedType, setSelectedType] = useState('STARTER');
+    const navigate = useNavigate();
+    const [menuType, setMenuType] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [submitting, setSubmitting] = useState(false);
 
-    const currentTable = useAppStore((state) => state.currentTable);
+    const menu = useAppStore((state) => state.menu);
+    const setMenu = useAppStore((state) => state.setMenu);
+    const selectedTable = useAppStore((state) => state.selectedTable);
     const cartItems = useAppStore((state) => state.cartItems);
     const clearCart = useAppStore((state) => state.clearCart);
 
     useEffect(() => {
+        if (!selectedTable) {
+            navigate('/tables');
+            return;
+        }
+
         const fetchMenu = async () => {
+            setLoading(true);
             try {
                 const response = await menuAPI.getAll();
-                setItems(response.data.data);
+                setMenu(response.data.data);
             } catch (error) {
                 console.error('Error fetching menu:', error);
             } finally {
@@ -30,76 +40,54 @@ export default function MenuPage() {
         fetchMenu();
     }, []);
 
-    const filteredItems = items.filter(item => item.type === selectedType);
-
     const handlePlaceOrder = async () => {
-        if (!currentTable) {
-            alert('No table selected');
-            return;
-        }
-
         if (cartItems.length === 0) {
             alert('Cart is empty');
             return;
         }
 
-        setSubmitting(true);
-        try {
-            const response = await ordersAPI.create({
-                tableId: currentTable.id,
-                staffId: 1, // TODO: Get from auth
-                items: cartItems.map(item => ({
-                    menu_item_id: item.menu_item_id,
-                    quantity: item.quantity,
-                    price: item.price,
-                })),
-            });
-
-            alert('Order placed successfully!');
-            clearCart();
-        } catch (error) {
-            console.error('Error placing order:', error);
-            alert('Error placing order');
-        } finally {
-            setSubmitting(false);
-        }
+        // Proceed to checkout
+        navigate('/orders');
     };
 
-    if (loading) return <div>Loading...</div>;
+    if (loading) return <Loading />;
 
     return (
-        <div className="menu-page">
-            <div className="menu-container">
-                <div className="menu-main">
-                    <h2>Menu</h2>
-                    <div className="type-filter">
-                        {['STARTER', 'MAIN', 'DESSERT', 'BEVERAGE'].map((type) => (
-                            <button
-                                key={type}
-                                onClick={() => setSelectedType(type)}
-                                className={`type-btn ${selectedType === type ? 'active' : ''}`}
-                            >
-                                {type}
-                            </button>
-                        ))}
-                    </div>
+        <div className="min-h-screen bg-gray-50">
+            <Navbar />
 
-                    <div className="items-grid">
-                        {filteredItems.map((item) => (
-                            <MenuItemCard key={item.id} item={item} />
-                        ))}
+            <div className="max-w-7xl mx-auto px-4 py-8">
+                {/* Header */}
+                <div className="mb-8">
+                    <div className="flex items-center gap-3 mb-2">
+                        <ChefHat className="text-primary" size={32} />
+                        <h1 className="text-4xl font-bold text-gray-800">
+                            Table {selectedTable?.table_number} - Order
+                        </h1>
                     </div>
+                    <p className="text-gray-600">Select items to add to your order</p>
                 </div>
 
-                <div className="menu-sidebar">
-                    <OrderSummary />
-                    <button
-                        onClick={handlePlaceOrder}
-                        disabled={cartItems.length === 0 || submitting}
-                        className="btn-place-order"
-                    >
-                        {submitting ? 'Placing...' : 'Place Order'}
-                    </button>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    {/* Menu Items */}
+                    <div className="lg:col-span-2">
+                        <MenuList
+                            items={menu}
+                            onTypeChange={setMenuType}
+                            currentType={menuType}
+                        />
+                    </div>
+
+                    {/* Order Summary */}
+                    <div>
+                        <OrderSummary />
+                        <button
+                            onClick={handlePlaceOrder}
+                            className="btn btn-primary w-full mt-4"
+                        >
+                            Proceed to Checkout
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

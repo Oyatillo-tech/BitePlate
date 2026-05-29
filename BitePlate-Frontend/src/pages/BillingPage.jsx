@@ -1,110 +1,87 @@
 import { useEffect, useState } from 'react';
-import { billsAPI } from '../services/api';
+import { useAppStore } from '../store/useAppStore';
+import { billsAPI, ordersAPI } from '../services/api';
+import Navbar from '../components/common/Navbar';
+import BillCard from '../components/billing/BillCard';
+import Loading from '../components/common/Loading';
+import { CreditCard } from 'lucide-react';
 
 export default function BillingPage() {
     const [bills, setBills] = useState([]);
-    const [selectedBill, setSelectedBill] = useState(null);
-    const [tip, setTip] = useState(0);
-    const [paymentMethod, setPaymentMethod] = useState('CARD');
+    const [loading, setLoading] = useState(true);
 
-    const handlePayBill = async () => {
-        if (!selectedBill) return;
-
-        try {
-            // Add tip
-            if (tip > 0) {
-                await billsAPI.addTip(selectedBill.id, tip);
+    useEffect(() => {
+        const fetchBills = async () => {
+            setLoading(true);
+            try {
+                const response = await billsAPI.getPending();
+                setBills(response.data.data);
+            } catch (error) {
+                console.error('Error fetching bills:', error);
+            } finally {
+                setLoading(false);
             }
+        };
 
-            // Pay bill
-            await billsAPI.pay(selectedBill.id, paymentMethod);
-            alert('Bill paid successfully!');
-            setSelectedBill(null);
-            setTip(0);
+        fetchBills();
+    }, []);
+
+    const handlePay = async (billId) => {
+        try {
+            await billsAPI.pay(billId, 'CARD');
+            alert('Payment processed successfully!');
+            // Refresh bills
+            const response = await billsAPI.getPending();
+            setBills(response.data.data);
         } catch (error) {
-            console.error('Error paying bill:', error);
             alert('Error processing payment');
         }
     };
 
+    const handleRefund = async (billId) => {
+        try {
+            await billsAPI.refund(billId);
+            alert('Refund processed!');
+            // Refresh bills
+            const response = await billsAPI.getPending();
+            setBills(response.data.data);
+        } catch (error) {
+            alert('Error processing refund');
+        }
+    };
+
+    if (loading) return <Loading />;
+
     return (
-        <div className="billing-page">
-            <h1>Billing</h1>
+        <div className="min-h-screen bg-gray-50">
+            <Navbar />
 
-            {selectedBill ? (
-                <div className="bill-details">
-                    <h2>Bill #{selectedBill.id}</h2>
-                    <div className="bill-info">
-                        <div className="info-row">
-                            <span>Subtotal:</span>
-                            <span>£{selectedBill.subtotal.toFixed(2)}</span>
-                        </div>
-                        <div className="info-row">
-                            <span>Tax:</span>
-                            <span>£{selectedBill.tax.toFixed(2)}</span>
-                        </div>
-                        {selectedBill.discount > 0 && (
-                            <div className="info-row discount">
-                                <span>Discount:</span>
-                                <span>-£{selectedBill.discount.toFixed(2)}</span>
-                            </div>
-                        )}
-                        <div className="info-row total">
-                            <span>Total:</span>
-                            <span>£{selectedBill.total.toFixed(2)}</span>
-                        </div>
-
-                        <div className="tip-section">
-                            <label>Add Tip:</label>
-                            <input
-                                type="number"
-                                value={tip}
-                                onChange={(e) => setTip(parseFloat(e.target.value))}
-                                step="0.01"
-                                min="0"
-                            />
-                        </div>
-
-                        {tip > 0 && (
-                            <div className="info-row final">
-                                <span>Final Total:</span>
-                                <span>£{(selectedBill.total + tip).toFixed(2)}</span>
-                            </div>
-                        )}
-
-                        <div className="payment-method">
-                            <label>Payment Method:</label>
-                            <select
-                                value={paymentMethod}
-                                onChange={(e) => setPaymentMethod(e.target.value)}
-                            >
-                                <option value="CARD">Card</option>
-                                <option value="CASH">Cash</option>
-                                <option value="MOBILE">Mobile Payment</option>
-                            </select>
-                        </div>
-
-                        <div className="bill-actions">
-                            <button
-                                onClick={handlePayBill}
-                                className="btn-pay"
-                            >
-                                Complete Payment
-                            </button>
-                            <button
-                                onClick={() => setSelectedBill(null)}
-                                className="btn-cancel"
-                            >
-                                Cancel
-                            </button>
-                        </div>
+            <div className="max-w-7xl mx-auto px-4 py-8">
+                <div className="flex items-center gap-3 mb-8">
+                    <CreditCard className="text-primary" size={32} />
+                    <div>
+                        <h1 className="text-4xl font-bold text-gray-800">Billing</h1>
+                        <p className="text-gray-600">Manage bills and payments</p>
                     </div>
                 </div>
-            ) : (
-                <div className="bills-list">
-                    <p>Select a bill to process payment</p>
-                </div>
-            )}
+
+                {bills.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {bills.map((bill) => (
+                            <BillCard
+                                key={bill.id}
+                                bill={bill}
+                                onPay={handlePay}
+                                onRefund={handleRefund}
+                            />
+                        ))}
+                    </div>
+                ) : (
+                    <div className="card p-12 text-center">
+                        <p className="text-gray-500 text-lg">No pending bills</p>
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

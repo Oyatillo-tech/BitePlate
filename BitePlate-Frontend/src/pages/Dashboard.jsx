@@ -1,65 +1,88 @@
-import { useEffect, useState } from 'react';
-import { tablesAPI } from '../services/api';
-import TableCard from '../components/TableCard';
-import './Dashboard.css';
+import { useEffect } from 'react';
+import { useAppStore } from '../store/useAppStore';
+import { tablesAPI, analyticsAPI } from '../services/api';
+import Navbar from '../components/common/Navbar';
+import TableGrid from '../components/table/TableGrid';
+import StatCard from '../components/analytics/StatCard';
+import Loading from '../components/common/Loading';
+import { Users, Utensils, TrendingUp, DollarSign } from 'lucide-react';
 
 export default function Dashboard() {
-    const [tables, setTables] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const tables = useAppStore((state) => state.tables);
+    const setTables = useAppStore((state) => state.setTables);
+    const analytics = useAppStore((state) => state.analytics);
+    const setAnalytics = useAppStore((state) => state.setAnalytics);
+    const loading = useAppStore((state) => state.loading);
+    const setLoading = useAppStore((state) => state.setLoading);
 
     useEffect(() => {
-        const fetchTables = async () => {
+        const fetchData = async () => {
+            setLoading(true);
             try {
-                const response = await tablesAPI.getAll();
-                setTables(response.data.data);
+                const [tablesRes, analyticsRes] = await Promise.all([
+                    tablesAPI.getAll(),
+                    analyticsAPI.getDashboard(),
+                ]);
+                setTables(tablesRes.data.data);
+                setAnalytics(analyticsRes.data.data);
             } catch (error) {
-                console.error('Error fetching tables:', error);
+                console.error('Error fetching dashboard data:', error);
             } finally {
                 setLoading(false);
             }
         };
 
-        fetchTables();
+        fetchData();
     }, []);
 
-    if (loading) return <div className="loading">Loading...</div>;
+    if (loading) return <Loading />;
 
-    const tablesByStatus = {
-        FREE: tables.filter(t => t.status === 'FREE'),
-        OCCUPIED: tables.filter(t => t.status === 'OCCUPIED'),
-        RESERVED: tables.filter(t => t.status === 'RESERVED'),
-        AWAITING_BILL: tables.filter(t => t.status === 'AWAITING_BILL'),
-    };
+    const occupied = tables.filter(t => t.status === 'OCCUPIED').length;
+    const free = tables.filter(t => t.status === 'FREE').length;
 
     return (
-        <div className="dashboard">
-            <h1>Restaurant Dashboard</h1>
+        <div className="min-h-screen bg-gray-50">
+            <Navbar />
 
-            <div className="stats">
-                <div className="stat-card available">
-                    <h3>{tablesByStatus.FREE.length}</h3>
-                    <p>Available Tables</p>
+            <div className="max-w-7xl mx-auto px-4 py-8">
+                {/* Header */}
+                <div className="mb-8">
+                    <h1 className="text-4xl font-bold text-gray-800 mb-2">Dashboard</h1>
+                    <p className="text-gray-600">Welcome back! Here's your restaurant overview.</p>
                 </div>
-                <div className="stat-card occupied">
-                    <h3>{tablesByStatus.OCCUPIED.length}</h3>
-                    <p>Occupied</p>
-                </div>
-                <div className="stat-card reserved">
-                    <h3>{tablesByStatus.RESERVED.length}</h3>
-                    <p>Reserved</p>
-                </div>
-                <div className="stat-card awaiting">
-                    <h3>{tablesByStatus.AWAITING_BILL.length}</h3>
-                    <p>Awaiting Bill</p>
-                </div>
-            </div>
 
-            <div className="tables-section">
-                <h2>Floor Plan</h2>
-                <div className="tables-grid">
-                    {tables.map((table) => (
-                        <TableCard key={table.id} table={table} />
-                    ))}
+                {/* Stats */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <StatCard
+                        title="Total Tables"
+                        value={tables.length}
+                        icon={Users}
+                        color="primary"
+                    />
+                    <StatCard
+                        title="Tables Occupied"
+                        value={occupied}
+                        icon={Utensils}
+                        color="warning"
+                    />
+                    <StatCard
+                        title="Available Tables"
+                        value={free}
+                        icon={Users}
+                        color="success"
+                    />
+                    <StatCard
+                        title="Today's Revenue"
+                        value={`£${analytics?.totalRevenue?.toFixed(2) || '0'}`}
+                        icon={DollarSign}
+                        color="primary"
+                    />
+                </div>
+
+                {/* Tables Section */}
+                <div className="mb-8">
+                    <h2 className="text-2xl font-bold text-gray-800 mb-6">Floor Plan</h2>
+                    <TableGrid tables={tables} />
                 </div>
             </div>
         </div>
