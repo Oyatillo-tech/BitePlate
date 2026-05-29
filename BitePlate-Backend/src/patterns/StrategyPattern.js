@@ -1,4 +1,4 @@
-// Strategy Pattern - Pricing Strategies
+// src/patterns/StrategyPattern.js
 
 class PricingStrategy {
     calculateTotal(subtotal) {
@@ -6,30 +6,47 @@ class PricingStrategy {
     }
 }
 
-class StandardPricing extends PricingStrategy {
-    calculateTotal(subtotal) {
-        const tax = subtotal * 0.2; // 20% VAT
+export class StandardPricing extends PricingStrategy {
+    calculateTotal(subtotal, discountPercentage = 0) {
+        let discountedSubtotal = subtotal;
+        let discount = 0;
+
+        if (discountPercentage > 0) {
+            discount = subtotal * (discountPercentage / 100);
+            discountedSubtotal = subtotal - discount;
+        }
+
+        const tax = discountedSubtotal * 0.2; // 20% VAT
+
         return {
             subtotal,
+            discount,
+            subtotalAfterDiscount: discountedSubtotal,
             tax,
-            total: subtotal + tax,
-            discount: 0,
+            total: discountedSubtotal + tax,
             strategy: 'STANDARD'
         };
     }
 }
 
-class HappyHourPricing extends PricingStrategy {
+export class HappyHourPricing extends PricingStrategy {
     // 20% discount 3pm-5pm
-    calculateTotal(subtotal) {
-        const discounted = subtotal * 0.8;
-        const tax = discounted * 0.2;
+    calculateTotal(subtotal, discountPercentage = 0) {
+        const baseDiscount = subtotal * 0.2;
+        let additionalDiscount = subtotal * (discountPercentage / 100);
+        const totalDiscount = baseDiscount + additionalDiscount;
+
+        const discountedSubtotal = subtotal - totalDiscount;
+        const tax = discountedSubtotal * 0.2;
+
         return {
             subtotal,
-            discount: subtotal * 0.2,
-            subtotalAfterDiscount: discounted,
+            baseDiscount,
+            additionalDiscount,
+            totalDiscount,
+            subtotalAfterDiscount: discountedSubtotal,
             tax,
-            total: discounted + tax,
+            total: discountedSubtotal + tax,
             strategy: 'HAPPY_HOUR'
         };
     }
@@ -41,30 +58,43 @@ class HappyHourPricing extends PricingStrategy {
     }
 }
 
-class LoyaltyCardPricing extends PricingStrategy {
-    // 10% discount + 5 free on drinks
-    calculateTotal(subtotal) {
-        const discounted = subtotal * 0.9;
-        const tax = discounted * 0.2;
+export class LoyaltyCardPricing extends PricingStrategy {
+    // 10% discount
+    calculateTotal(subtotal, discountPercentage = 10) {
+        const discount = subtotal * (discountPercentage / 100);
+        const discountedSubtotal = subtotal - discount;
+        const tax = discountedSubtotal * 0.2;
+
         return {
             subtotal,
-            discount: subtotal * 0.1,
-            subtotalAfterDiscount: discounted,
+            discount,
+            subtotalAfterDiscount: discountedSubtotal,
             tax,
-            total: discounted + tax,
+            total: discountedSubtotal + tax,
             strategy: 'LOYALTY_CARD'
         };
     }
 }
 
-class WeekendSurchargePricing extends PricingStrategy {
+export class WeekendSurchargePricing extends PricingStrategy {
     // 15% surcharge Sat/Sun
-    calculateTotal(subtotal) {
-        const surcharged = subtotal * 1.15;
+    calculateTotal(subtotal, discountPercentage = 0) {
+        let finalSubtotal = subtotal;
+        let discount = 0;
+
+        if (discountPercentage > 0) {
+            discount = subtotal * (discountPercentage / 100);
+            finalSubtotal = subtotal - discount;
+        }
+
+        const surcharge = finalSubtotal * 0.15;
+        const surcharged = finalSubtotal + surcharge;
         const tax = surcharged * 0.2;
+
         return {
             subtotal,
-            surcharge: subtotal * 0.15,
+            discount,
+            surcharge,
             subtotalAfterSurcharge: surcharged,
             tax,
             total: surcharged + tax,
@@ -79,34 +109,81 @@ class WeekendSurchargePricing extends PricingStrategy {
     }
 }
 
-class GroupDiscountPricing extends PricingStrategy {
+export class GroupDiscountPricing extends PricingStrategy {
     constructor(partySize = 6) {
         super();
         this.partySize = partySize;
     }
 
-    calculateTotal(subtotal) {
+    calculateTotal(subtotal, discountPercentage = 0) {
+        let discount = 0;
+
         if (this.partySize >= 6) {
-            const discounted = subtotal * 0.85; // 15% for groups of 6+
-            const tax = discounted * 0.2;
-            return {
-                subtotal,
-                discount: subtotal * 0.15,
-                subtotalAfterDiscount: discounted,
-                tax,
-                total: discounted + tax,
-                strategy: 'GROUP_DISCOUNT'
-            };
+            discount = subtotal * 0.15; // 15% for groups of 6+
+        } else if (discountPercentage > 0) {
+            discount = subtotal * (discountPercentage / 100);
         }
-        return new StandardPricing().calculateTotal(subtotal);
+
+        const discountedSubtotal = subtotal - discount;
+        const tax = discountedSubtotal * 0.2;
+
+        return {
+            subtotal,
+            discount,
+            subtotalAfterDiscount: discountedSubtotal,
+            tax,
+            total: discountedSubtotal + tax,
+            strategy: 'GROUP_DISCOUNT',
+            partySize: this.partySize
+        };
     }
 }
 
-module.exports = {
-    PricingStrategy,
-    StandardPricing,
-    HappyHourPricing,
-    LoyaltyCardPricing,
-    WeekendSurchargePricing,
-    GroupDiscountPricing
-};
+export class CorporateAccountPricing extends PricingStrategy {
+    constructor(discountRate = 12) {
+        super();
+        this.discountRate = discountRate;
+    }
+
+    calculateTotal(subtotal, additionalDiscount = 0) {
+        const baseDiscount = subtotal * (this.discountRate / 100);
+        const additionalDiscountAmount = subtotal * (additionalDiscount / 100);
+        const totalDiscount = baseDiscount + additionalDiscountAmount;
+
+        const discountedSubtotal = subtotal - totalDiscount;
+        const tax = discountedSubtotal * 0.2;
+
+        return {
+            subtotal,
+            baseDiscount,
+            additionalDiscount: additionalDiscountAmount,
+            totalDiscount,
+            subtotalAfterDiscount: discountedSubtotal,
+            tax,
+            total: discountedSubtotal + tax,
+            strategy: 'CORPORATE',
+            discountRate: this.discountRate
+        };
+    }
+}
+
+export function getPricingStrategy(type, params = {}) {
+    switch (type) {
+        case 'STANDARD':
+            return new StandardPricing();
+        case 'HAPPY_HOUR':
+            return new HappyHourPricing();
+        case 'LOYALTY_CARD':
+            return new LoyaltyCardPricing();
+        case 'WEEKEND':
+            return new WeekendSurchargePricing();
+        case 'GROUP':
+            return new GroupDiscountPricing(params.partySize || 6);
+        case 'CORPORATE':
+            return new CorporateAccountPricing(params.discountRate || 12);
+        default:
+            return new StandardPricing();
+    }
+}
+
+export default PricingStrategy;

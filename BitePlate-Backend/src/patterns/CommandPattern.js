@@ -1,16 +1,37 @@
-const pool = require('../config/database');
+// src/patterns/CommandPattern.js
+import pool from '../config/database.js';
 
 class Command {
     async execute() {
-        throw new Error('execute must be implemented');
+        throw new Error('execute() must be implemented');
     }
 
     async undo() {
-        throw new Error('undo must be implemented');
+        throw new Error('undo() must be implemented');
+    }
+
+    async logCommand(type, orderId, previousState, newState) {
+        const query = `
+            INSERT INTO command_history 
+            (command_type, order_id, previous_state, new_state, executed_at)
+            VALUES ($1, $2, $3, $4, NOW())
+            RETURNING *
+        `;
+
+        try {
+            await pool.query(query, [
+                type,
+                orderId,
+                JSON.stringify(previousState),
+                JSON.stringify(newState)
+            ]);
+        } catch (err) {
+            console.error('❌ Error logging command:', err);
+        }
     }
 }
 
-class PrepareOrderCommand extends Command {
+export class PrepareOrderCommand extends Command {
     constructor(orderId) {
         super();
         this.orderId = orderId;
@@ -39,8 +60,10 @@ class PrepareOrderCommand extends Command {
             ['PREPARING', this.orderId]
         );
 
-        // Log command
-        await this.logCommand('PREPARE', this.previousStatus, 'PREPARING');
+        await this.logCommand('PREPARE', this.orderId,
+            { status: this.previousStatus },
+            { status: 'PREPARING' }
+        );
 
         console.log(`🔥 Order #${this.orderId} is now PREPARING`);
     }
@@ -56,29 +79,11 @@ class PrepareOrderCommand extends Command {
             ['PENDING', this.orderId]
         );
 
-        await this.logUndo();
         console.log(`↩️  Order #${this.orderId} reverted to ${this.previousStatus}`);
-    }
-
-    async logCommand(type, previous, newState) {
-        await pool.query(
-            `INSERT INTO command_history (command_type, order_id, previous_state, new_state)
-             VALUES ($1, $2, $3, $4)`,
-            [type, this.orderId, JSON.stringify({ status: previous }), JSON.stringify({ status: newState })]
-        );
-    }
-
-    async logUndo() {
-        await pool.query(
-            `UPDATE command_history SET undone_at = NOW() 
-             WHERE order_id = $1 AND undone_at IS NULL
-             ORDER BY executed_at DESC LIMIT 1`,
-            [this.orderId]
-        );
     }
 }
 
-class CancelOrderCommand extends Command {
+export class CancelOrderCommand extends Command {
     constructor(orderId) {
         super();
         this.orderId = orderId;
@@ -103,8 +108,13 @@ class CancelOrderCommand extends Command {
         );
 
         await pool.query(
-            'UPDATE kitchen_queue SET status = $1 WHERE order_id = $2',
+            'UPDATE kitchen_queue SET status = $1, updated_at = NOW() WHERE order_id = $2',
             ['CANCELLED', this.orderId]
+        );
+
+        await this.logCommand('CANCEL', this.orderId,
+            { status: this.previousState.status },
+            { status: 'CANCELLED' }
         );
 
         console.log(`❌ Order #${this.orderId} CANCELLED`);
@@ -112,7 +122,7 @@ class CancelOrderCommand extends Command {
 
     async undo() {
         await pool.query(
-            'UPDATE orders SET status = $1 WHERE id = $2',
+            'UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2',
             [this.previousState.status, this.orderId]
         );
 
@@ -120,21 +130,38 @@ class CancelOrderCommand extends Command {
     }
 }
 
-class CompleteOrderCommand extends Command {
+export class CompleteOrderCommand extends Command {
     constructor(orderId) {
         super();
         this.orderId = orderId;
+        this.previousStatus = null;
     }
 
     async execute() {
+        const result = await pool.query(
+            'SELECT status FROM orders WHERE id = $1',
+            [this.orderId]
+        );
+
+        if (result.rows.length === 0) {
+            throw new Error('Order not found');
+        }
+
+        this.previousStatus = result.rows[0].status;
+
         await pool.query(
-            'UPDATE orders SET status = $1 WHERE id = $2',
+            'UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2',
             ['READY', this.orderId]
         );
 
         await pool.query(
-            'UPDATE kitchen_queue SET status = $1 WHERE order_id = $2',
+            'UPDATE kitchen_queue SET status = $1, updated_at = NOW() WHERE order_id = $2',
             ['READY', this.orderId]
+        );
+
+        await this.logCommand('COMPLETE', this.orderId,
+            { status: this.previousStatus },
+            { status: 'READY' }
         );
 
         console.log(`✅ Order #${this.orderId} is READY`);
@@ -142,15 +169,64 @@ class CompleteOrderCommand extends Command {
 
     async undo() {
         await pool.query(
-            'UPDATE orders SET status = $1 WHERE id = $2',
-            ['PREPARING', this.orderId]
+            'UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2',
+            [this.previousStatus, this.orderId]
         );
+
+        console.log(`↩️  Order #${this.orderId} reverted`);
     }
 }
 
-module.exports = {
-    Command,
-    PrepareOrderCommand,
-    CancelOrderCommand,
-    CompleteOrderCommand
-};
+export class KitchenQueue {
+    constructor() {
+        this.queue = [];
+        this.history = [];
+    }
+
+    enqueue(command) {
+        this.queue.push(command);
+        this.history.push(command);
+        return command;
+    }
+
+    async undoLast() {
+        if (this.history.length > 0) {
+            const lastCommand = this.history.pop();
+            await lastCommand.undo();
+            return lastCommand;
+        }
+        return null;
+    }
+
+    getQueueStatus() {
+        return {
+            queueLength: this.queue.length,
+            historyLength: this.history.length
+        };
+    }
+
+    async getKitchenQueue() {
+        const query = `
+            SELECT kq.*, o.order_number, o.created_at
+            FROM kitchen_queue kq
+            JOIN orders o ON kq.order_id = o.id
+            WHERE kq.status IN ('PENDING', 'PREPARING')
+            ORDER BY kq.priority DESC, kq.created_at ASC
+        `;
+        const result = await pool.query(query);
+        return result.rows;
+    }
+
+    async updatePriority(orderId, priority) {
+        const query = `
+            UPDATE kitchen_queue
+            SET priority = $1, updated_at = NOW()
+            WHERE order_id = $2
+            RETURNING *
+        `;
+        const result = await pool.query(query, [priority, orderId]);
+        return result.rows[0];
+    }
+}
+
+export default KitchenQueue;

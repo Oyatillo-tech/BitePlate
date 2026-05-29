@@ -1,5 +1,9 @@
-const { Pool } = require('pg');
-require('dotenv').config();
+// src/config/database.js
+import pkg from 'pg';
+import dotenv from 'dotenv';
+
+const { Pool } = pkg;
+dotenv.config();
 
 const pool = new Pool({
     user: process.env.DB_USER,
@@ -10,7 +14,12 @@ const pool = new Pool({
 });
 
 pool.on('error', (err) => {
-    console.error('Unexpected error on idle client', err);
+    console.error('❌ Unexpected error on idle client', err);
+    process.exit(-1);
 });
 
-module.exports = pool;
+pool.on('connect', () => {
+    console.log('✅ Database connected');
+});
+
+export default pool;

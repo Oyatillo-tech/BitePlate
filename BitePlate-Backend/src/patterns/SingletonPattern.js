@@ -1,20 +1,20 @@
-const pool = require('../config/database');
+// src/patterns/SingletonPattern.js
+import pool from '../config/database.js';
 
 class OrderHistoryLog {
-    static instance = null;
+    static #instance = null;
 
     constructor() {
-        if (OrderHistoryLog.instance) {
-            throw new Error("OrderHistoryLog is a Singleton");
+        if (OrderHistoryLog.#instance !== null) {
+            throw new Error('OrderHistoryLog is a Singleton. Use getInstance()');
         }
-        OrderHistoryLog.instance = this;
     }
 
     static getInstance() {
-        if (!OrderHistoryLog.instance) {
-            new OrderHistoryLog();
+        if (OrderHistoryLog.#instance === null) {
+            OrderHistoryLog.#instance = new OrderHistoryLog();
         }
-        return OrderHistoryLog.instance;
+        return OrderHistoryLog.#instance;
     }
 
     async logOrder(orderData) {
@@ -37,7 +37,7 @@ class OrderHistoryLog {
             console.log('✓ Order logged to history');
             return result.rows[0];
         } catch (err) {
-            console.error('Error logging order:', err);
+            console.error('❌ Error logging order:', err);
             throw err;
         }
     }
@@ -62,11 +62,23 @@ class OrderHistoryLog {
         return result.rows;
     }
 
+    async getOrdersByDateRange(startDate, endDate) {
+        const query = `
+            SELECT * FROM order_history_log 
+            WHERE DATE(timestamp) BETWEEN $1 AND $2
+            ORDER BY timestamp DESC
+        `;
+        const result = await pool.query(query, [startDate, endDate]);
+        return result.rows;
+    }
+
     async getMostOrderedItems(limit = 10) {
         const query = `
             SELECT jsonb_array_elements(items)->>'name' as item_name, 
-                   COUNT(*) as count
+                   COUNT(*) as count,
+                   SUM((jsonb_array_elements(items)->>'price')::numeric) as total_revenue
             FROM order_history_log
+            WHERE items IS NOT NULL
             GROUP BY item_name
             ORDER BY count DESC
             LIMIT $1
@@ -75,26 +87,70 @@ class OrderHistoryLog {
         return result.rows;
     }
 
-    async getAnalytics() {
-        const totalRevenue = await pool.query(
-            'SELECT SUM(total) as revenue FROM order_history_log'
-        );
+    async getTotalRevenue() {
+        const query = 'SELECT SUM(total) as total_revenue FROM order_history_log';
+        const result = await pool.query(query);
+        return result.rows[0];
+    }
 
-        const topItems = await this.getMostOrderedItems(10);
-
-        const peakHours = await pool.query(`
-            SELECT EXTRACT(HOUR FROM timestamp) as hour, COUNT(*) as count
+    async getAverageOrderValue() {
+        const query = `
+            SELECT AVG(total) as avg_value, 
+                   COUNT(*) as total_orders
             FROM order_history_log
-            GROUP BY hour
-            ORDER BY count DESC
-        `);
+        `;
+        const result = await pool.query(query);
+        return result.rows[0];
+    }
+
+    async getPeakHours() {
+        const query = `
+            SELECT EXTRACT(HOUR FROM timestamp) as hour, 
+                   COUNT(*) as order_count,
+                   SUM(total) as revenue
+            FROM order_history_log
+            GROUP BY EXTRACT(HOUR FROM timestamp)
+            ORDER BY hour
+        `;
+        const result = await pool.query(query);
+        return result.rows;
+    }
+
+    async getAnalytics(days = 30) {
+        const totalRevenue = await this.getTotalRevenue();
+        const averageOrderValue = await this.getAverageOrderValue();
+        const topItems = await this.getMostOrderedItems(10);
+        const peakHours = await this.getPeakHours();
 
         return {
-            totalRevenue: totalRevenue.rows[0].revenue,
+            totalRevenue: totalRevenue.total_revenue,
+            averageOrderValue: averageOrderValue.avg_value,
+            totalOrders: averageOrderValue.total_orders,
             topItems,
-            peakHours: peakHours.rows
+            peakHours
         };
+    }
+
+    async getOrdersByStaff(staffId, days = 30) {
+        const query = `
+            SELECT COUNT(*) as total_orders, 
+                   SUM(total) as total_revenue
+            FROM order_history_log
+            WHERE staff_id = $1 
+            AND timestamp >= NOW() - INTERVAL '${days} days'
+        `;
+        const result = await pool.query(query, [staffId]);
+        return result.rows[0];
+    }
+
+    async deleteOldRecords(days = 90) {
+        const query = `
+            DELETE FROM order_history_log
+            WHERE timestamp < NOW() - INTERVAL '${days} days'
+        `;
+        const result = await pool.query(query);
+        return result.rowCount;
     }
 }
 
-module.exports = OrderHistoryLog;
+export default OrderHistoryLog;
