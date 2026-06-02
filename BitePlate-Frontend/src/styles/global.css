@@ -2,9 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ==========================================
-   RESET & BASE STYLES
-   ========================================== */
 * {
     margin: 0;
     padding: 0;
