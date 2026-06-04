@@ -74,15 +74,22 @@ class OrderHistoryLog {
 
     async getMostOrderedItems(limit = 10) {
         const query = `
-            SELECT jsonb_array_elements(items)->>'name' as item_name, 
-                   COUNT(*) as count,
-                   SUM((jsonb_array_elements(items)->>'price')::numeric) as total_revenue
-            FROM order_history_log
-            WHERE items IS NOT NULL
-            GROUP BY item_name
-            ORDER BY count DESC
-            LIMIT $1
-        `;
+        SELECT
+            item->>'name' AS item_name,
+            COUNT(*) AS count,
+            SUM(
+                COALESCE(
+                    (item->>'price')::numeric,
+                    0
+                )
+            ) AS total_revenue
+        FROM order_history_log
+        CROSS JOIN LATERAL jsonb_array_elements(items) AS item
+        WHERE items IS NOT NULL
+        GROUP BY item->>'name'
+        ORDER BY count DESC
+        LIMIT $1
+    `;
         const result = await pool.query(query, [limit]);
         return result.rows;
     }

@@ -9,7 +9,7 @@ export default function CartItem({ item }) {
         <div className="flex items-center justify-between bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-primary transition-colors">
             <div className="flex-1">
                 <h4 className="font-semibold text-gray-800">{item.name}</h4>
-                <p className="text-sm text-gray-600">£{item.price.toFixed(2)} each</p>
+                <p className="text-sm text-gray-600">£{parseFloat(item.price || 0).toFixed(2)}each</p>
             </div>
 
             <div className="flex items-center gap-2">

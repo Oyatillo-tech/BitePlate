@@ -12,6 +12,8 @@ export const getDashboardAnalytics = async (req, res) => {
             data: analytics
         });
     } catch (err) {
+        console.error('ANALYTICS ERROR:', err);
+
         res.status(500).json({
             success: false,
             error: err.message

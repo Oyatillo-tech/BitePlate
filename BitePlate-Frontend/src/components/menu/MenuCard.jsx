@@ -25,7 +25,7 @@ export default function MenuCard({ item }) {
                     <h3 className="font-bold text-lg text-gray-800">{item.name}</h3>
                     <span className="badge badge-primary text-xs">{item.type}</span>
                 </div>
-                <span className="text-2xl font-bold text-primary">£{item.price.toFixed(2)}</span>
+                <span className="text-2xl font-bold text-primary">£{parseFloat(item.price || 0).toFixed(2)}</span>
             </div>
 
             {/* Description */}
